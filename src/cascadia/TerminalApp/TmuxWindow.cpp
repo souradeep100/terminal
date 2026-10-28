@@ -105,7 +105,11 @@ namespace winrt::TerminalApp::implementation
             if (_windows.empty() || !_session->Active())
             {
                 Detach();
-                page->CloseWindowRequested.raise(*page, nullptr);
+                // Removing the last tmux tab already requests window closure.
+                if (page->NumberOfTabs() != 0)
+                {
+                    page->CloseWindowRequested.raise(*page, nullptr);
+                }
                 _detaching = false;
                 _requested = false;
             }
