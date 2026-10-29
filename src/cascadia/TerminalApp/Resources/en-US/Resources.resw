@@ -1007,8 +1007,8 @@ For all available options, run 'wt new-tab --help'.</value>
     <comment>{Locked="wt","new-tab","-p","-d","--help"}</comment>
   </data>
   <data name="TmuxControlMenu" xml:space="preserve">
-    <value>** tmux control mode **&#13;&#10;Esc: detach (remote programs keep running)&#13;&#10;n: new tmux window&#13;&#10;X: leave a broken control connection&#13;&#10;</value>
-    <comment>Control-mode gateway menu. Keep the Esc, n, and X key names unchanged.</comment>
+    <value>** tmux control mode **&#13;&#10;n: new tmux window&#13;&#10;X: leave a broken control connection&#13;&#10;</value>
+    <comment>Control-mode gateway menu. Keep the n and X key names unchanged.</comment>
   </data>
   <data name="TmuxDetached" xml:space="preserve">
     <value>[tmux detached]</value>

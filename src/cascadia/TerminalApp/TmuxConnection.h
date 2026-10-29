@@ -45,6 +45,7 @@ namespace winrt::TerminalApp::implementation
         void PaneResized();
         void AcknowledgeResize() noexcept { _resizeScheduled = false; }
         bool Active() const;
+        void ReportLifecycle(std::string_view event) const noexcept;
         bool WindowOwned() const noexcept { return _windowOwned.load(); }
         void WindowOwned(bool value);
         void CloseGateway();
@@ -54,6 +55,7 @@ namespace winrt::TerminalApp::implementation
         std::function<void(std::vector<Window>)> WindowsChanged;
         std::function<void()> ResizeRequested;
         std::function<void()> StateChanged;
+        std::function<void(std::string_view)> LifecycleEvent;
 
         Connection Transport() const { return _transport; }
 

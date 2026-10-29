@@ -31,7 +31,7 @@ namespace winrt::TerminalApp::implementation
         void Attach(TerminalPage& page);
         bool TryNewTab(const Microsoft::Terminal::Settings::Model::INewContentArgs& args);
         void NewTab();
-        void Detach();
+        void Detach(std::string_view reason = "window-close");
         void UpdateControls();
 
         hstring Type() const { return L"tmux"; }

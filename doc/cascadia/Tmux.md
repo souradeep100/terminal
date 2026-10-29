@@ -35,8 +35,8 @@ commands out of the base SSH command line when enabling it. An explicit command
 line override takes precedence over the profile's launch mode.
 Manual `tmux -CC` detection remains available even when the profile option is off.
 
-The original tab becomes a gateway. Its Escape key detaches the client without
-killing remote programs; `n` creates a remote window. Each control connection
+The original tab becomes a gateway. Escape does not detach the client;
+`n` creates a remote window. Each control connection
 opens a separate native Terminal window for that tmux session. Its **+** button
 and normal new-tab shortcuts create remote tmux tabs for that session, even when
 Settings is selected. The tab strip has **+** and **Settings** buttons, without a

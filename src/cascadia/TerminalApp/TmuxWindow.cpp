@@ -4,12 +4,43 @@
 #include "pch.h"
 #include "TmuxWindow.h"
 #include "TerminalPage.h"
+#include <filesystem>
+#include <fstream>
 
 using namespace winrt;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
 using namespace winrt::Microsoft::Terminal::TerminalConnection;
 using namespace winrt::Windows::UI::Core;
 using namespace winrt::Windows::UI::Xaml;
+
+namespace
+{
+    void AppendLifecycle(const std::filesystem::path& path, const std::string& id, const std::string_view event) noexcept
+    {
+        try
+        {
+            static std::mutex mutex;
+            const std::lock_guard lock{ mutex };
+            std::error_code error;
+            const auto size = std::filesystem::file_size(path, error);
+            const auto mode = !error && size > 256 * 1024 ? std::ios::trunc : std::ios::app;
+            std::ofstream output{ path, std::ios::binary | mode };
+            SYSTEMTIME now{};
+            GetSystemTime(&now);
+            output << fmt::format("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z session={} event={}\n",
+                                  now.wYear,
+                                  now.wMonth,
+                                  now.wDay,
+                                  now.wHour,
+                                  now.wMinute,
+                                  now.wSecond,
+                                  now.wMilliseconds,
+                                  id,
+                                  event);
+        }
+        CATCH_LOG();
+    }
+}
 
 namespace winrt::TerminalApp::implementation
 {
@@ -29,7 +60,8 @@ namespace winrt::TerminalApp::implementation
 
     TmuxWindow::~TmuxWindow()
     {
-        Detach();
+        _session->ReportLifecycle("controller-destroyed");
+        Detach("controller-destroyed");
     }
 
     ITerminalConnection TmuxWindow::Wrap(TerminalPage& source,
@@ -38,6 +70,18 @@ namespace winrt::TerminalApp::implementation
                                          const uint32_t historyLimit)
     {
         auto session = std::make_shared<TmuxSession>(transport, historyLimit);
+        wchar_t diagnostics[2]{};
+        if (GetEnvironmentVariableW(L"WT_TMUX_DIAGNOSTICS", diagnostics, ARRAYSIZE(diagnostics)) == 1 && diagnostics[0] == L'1')
+        {
+            try
+            {
+                const auto path = std::filesystem::path{ CascadiaSettings::SettingsDirectory().c_str() } / L"tmux-lifecycle.log";
+                const auto id = winrt::to_string(winrt::to_hstring(transport.SessionId()));
+                session->LifecycleEvent = [path, id](const std::string_view event) { AppendLifecycle(path, id, event); };
+                session->ReportLifecycle("gateway-created");
+            }
+            CATCH_LOG();
+        }
         auto window = winrt::make_self<TmuxWindow>(source, profile, session);
         const auto weak = window->get_weak();
         const auto dispatcher = source.Dispatcher();
@@ -104,7 +148,8 @@ namespace winrt::TerminalApp::implementation
             page->_SyncTmuxWindows(_session, _profile, _windows);
             if (_windows.empty() || !_session->Active())
             {
-                Detach();
+                _session->ReportLifecycle(_windows.empty() ? "inventory-empty" : "session-inactive");
+                Detach("session-ended");
                 // Removing the last tmux tab already requests window closure.
                 if (page->NumberOfTabs() != 0)
                 {
@@ -136,11 +181,12 @@ namespace winrt::TerminalApp::implementation
 
     void TmuxWindow::Attach(TerminalPage& page)
     {
+        _session->ReportLifecycle("window-attached");
         _state->page = page.get_weak();
         _unloaded = page.Unloaded(winrt::auto_revoke, [weak = get_weak()](auto&&, auto&&) {
             if (const auto self = weak.get())
             {
-                self->Detach();
+                self->Detach("page-unloaded");
             }
         });
         const auto button = [](const Controls::Symbol symbol, const hstring& id, const hstring& name, const hstring& tip) {
@@ -222,10 +268,11 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TmuxWindow::Detach()
+    void TmuxWindow::Detach(const std::string_view reason)
     {
         if (_Page())
         {
+            _session->ReportLifecycle(reason);
             _state->page = weak_ref<TerminalPage>{};
             _unloaded.revoke();
             _detaching = true;

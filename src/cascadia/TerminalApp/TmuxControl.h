@@ -350,7 +350,7 @@ namespace Microsoft::Terminal::Tmux
             }
         }
 
-        void Disconnect()
+        void Disconnect(std::string reason = {})
         {
             if (_active)
             {
@@ -364,7 +364,7 @@ namespace Microsoft::Terminal::Tmux
                 _globalSize.reset();
                 _deferredCaptures.clear();
                 _statusRows = 1;
-                _events.push_back({ Event::Kind::Exit, 0, {}, {} });
+                _events.push_back({ Event::Kind::Exit, 0, std::move(reason), {} });
             }
         }
 
@@ -889,6 +889,12 @@ namespace Microsoft::Terminal::Tmux
                 }
                 return;
             }
+            if (!line.empty() && line.front() != '%')
+            {
+                _Terminal(line);
+                _Terminal("\r\n");
+                return;
+            }
             if (line.starts_with("%begin "))
             {
                 _guard = line.substr(7);
@@ -941,7 +947,7 @@ namespace Microsoft::Terminal::Tmux
             }
             else if (name == "%exit")
             {
-                Disconnect();
+                Disconnect(std::string{ arguments });
                 _exiting = true;
                 _refreshPending = _refreshAgain = false;
             }

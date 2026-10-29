@@ -63,6 +63,7 @@ namespace winrt::TerminalApp::implementation
             _writes.clear();
             _queuedBytes = 0;
         }
+        ReportLifecycle("session-close");
         _writeReady.notify_all();
         // Closing ConPTY also cancels a pending transport write before joining.
         _transport.Close();
@@ -81,6 +82,18 @@ namespace winrt::TerminalApp::implementation
         return !_closing && _client.Active();
     }
 
+    void TmuxSession::ReportLifecycle(const std::string_view event) const noexcept
+    {
+        try
+        {
+            if (LifecycleEvent)
+            {
+                LifecycleEvent(event);
+            }
+        }
+        CATCH_LOG();
+    }
+
     void TmuxSession::WindowOwned(const bool value)
     {
         _windowOwned = value;
@@ -92,6 +105,7 @@ namespace winrt::TerminalApp::implementation
 
     void TmuxSession::CloseGateway()
     {
+        ReportLifecycle(_windowOwned ? "gateway-close-owned" : "gateway-close-unowned");
         _gatewayClosed = true;
         if (!_windowOwned)
         {
@@ -101,6 +115,7 @@ namespace winrt::TerminalApp::implementation
 
     void TmuxSession::ForceExit()
     {
+        ReportLifecycle("gateway-force-exit");
         _Run([&] { _client.ForceExit(); });
     }
 
@@ -125,6 +140,7 @@ namespace winrt::TerminalApp::implementation
             }
             if (_queuedBytes + additionalBytes > 64 * 1024 * 1024)
             {
+                ReportLifecycle("input-queue-overflow");
                 _client.Abort("Input queue full; detached without killing remote programs.");
                 _writes.clear();
                 _queuedBytes = 0;
@@ -181,6 +197,7 @@ namespace winrt::TerminalApp::implementation
             }
             catch (...)
             {
+                ReportLifecycle("transport-write-failed");
                 LOG_CAUGHT_EXCEPTION();
                 _Disconnected();
                 return;
@@ -210,6 +227,7 @@ namespace winrt::TerminalApp::implementation
         }
         catch (...)
         {
+            ReportLifecycle("protocol-error");
             LOG_CAUGHT_EXCEPTION();
             if (TerminalOutput)
             {
@@ -291,6 +309,9 @@ namespace winrt::TerminalApp::implementation
                 break;
             case Event::Kind::Exit:
             {
+                ReportLifecycle(event.data == "too far behind" ? "server-exit-too-far-behind" :
+                                event.data.empty()             ? "client-exit" :
+                                                                 "server-exit");
                 std::vector<winrt::com_ptr<TmuxPaneConnection>> panes;
                 {
                     std::lock_guard lock{ _mutex };
@@ -315,6 +336,10 @@ namespace winrt::TerminalApp::implementation
                 if (TerminalOutput)
                 {
                     TerminalOutput("\x1b[?9001h\r\n" + til::u16u8(RS_(L"TmuxDetached")) + "\r\n");
+                    if (!event.data.empty())
+                    {
+                        TerminalOutput("\r\n[tmux] " + event.data + "\r\n");
+                    }
                 }
                 break;
             }
@@ -330,6 +355,7 @@ namespace winrt::TerminalApp::implementation
 
     void TmuxSession::_Disconnected()
     {
+        ReportLifecycle("transport-disconnected");
         _Run([&] { _client.Disconnect(); });
     }
 
@@ -493,11 +519,7 @@ namespace winrt::TerminalApp::implementation
         }
         if (bytes.size() == 1)
         {
-            if (bytes[0] == '\x1b')
-            {
-                _session->Command("detach-client");
-            }
-            else if (bytes[0] == 'n' || bytes[0] == 'N')
+            if (bytes[0] == 'n' || bytes[0] == 'N')
             {
                 _session->Command("new-window");
             }
